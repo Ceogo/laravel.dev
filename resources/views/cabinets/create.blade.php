@@ -21,7 +21,7 @@
             <label for="learning_outcome_ids" class="block text-sm font-medium text-gray-700">Разрешённые РО</label>
             <select name="learning_outcome_ids[]" id="learning_outcome_ids" multiple class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
                 @foreach ($learningOutcomes as $lo)
-                    <option value="{{ $lo->id }}">{{ $lo->discipline_name }}</option>
+                    <option value="{{ $lo->id }}">{{ $lo->index }} {{ $lo->discipline_name }}</option>
                 @endforeach
             </select>
         </div>
