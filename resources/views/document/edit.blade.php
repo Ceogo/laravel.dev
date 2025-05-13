@@ -24,6 +24,7 @@
             box-shadow: 0 0 0 3px rgba(54, 186, 107, 0.2);
         }
         .submit-button {
+            background-color: var(--primary);
             transition: background-color 0.2s, transform 0.2s;
         }
         .submit-button:hover {

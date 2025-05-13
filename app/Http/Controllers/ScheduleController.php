@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use App\Models\SemesterDetail;
 use App\Models\LearningOutcome;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Validator;
 
 class ScheduleController extends Controller
 {
@@ -57,16 +58,13 @@ class ScheduleController extends Controller
 
     private function prepareDayLessons($lessons)
     {
-        // Пример реализации
         shuffle($lessons);
         $result = [];
         $pairNumber = 1;
-
         foreach ($lessons as $lesson) {
             $result[$pairNumber++] = $lesson;
             if ($pairNumber > 4) break;
         }
-
         return $result;
     }
 
@@ -118,12 +116,11 @@ class ScheduleController extends Controller
                 $suitableCabinets = $this->findSuitableCabinets($lesson, $group->id);
 
                 if ($suitableCabinets->isEmpty()) {
-                    // Логирование необходимости ручного вмешательства
                     $this->logManualOverrideNeeded($lesson, $group);
                     continue;
                 }
 
-                // Выбор кабинета по приоритетам
+                // Выбор оптимального кабинета
                 $selectedCabinet = $this->selectOptimalCabinet(
                     $suitableCabinets,
                     $lesson['teacher_name']
@@ -153,22 +150,24 @@ class ScheduleController extends Controller
             }
         }
 
-        // Обработка LessonLine
         $this->processLessonLines($group->id, $semester, $week);
-
-        dd($schedule);
-
         return $schedule;
     }
 
     private function getLessons($group, $semester)
     {
         $lessons = [];
+
         foreach ($group->modules as $module) {
             foreach ($module->learningOutcomes as $lo) {
-                $semesterDetail = $lo->semesterDetails()->where('semester_number', $semester)->first();
+                $semesterDetail = $lo->semesterDetails()
+                    ->where('semester_number', $semester)
+                    ->first();
+
                 if ($semesterDetail && $semesterDetail->total_hours > 0) {
-                    $exams = is_array($semesterDetail->exams) ? $semesterDetail->exams : [];
+                    // Исправленная обработка JSON-поля
+                    $exams = json_decode($semesterDetail->exams, true);
+                    $exams = is_array($exams) ? $exams : [];
 
                     $lessons[] = [
                         'learning_outcome_id' => $lo->id,
@@ -182,11 +181,17 @@ class ScheduleController extends Controller
                 }
             }
         }
+
         return $lessons;
     }
 
     private function isTeacherAvailable($teacherName, $day, $pairNumber, $week, $semester)
     {
+        // Обработка случая null или "вакансия"
+        if (!$teacherName || $teacherName === 'вакансия') {
+            return true;
+        }
+
         return !Schedule::where('week', $week)
             ->where('semester', $semester)
             ->where('day', $day)
@@ -204,17 +209,16 @@ class ScheduleController extends Controller
     private function findSuitableCabinets($lesson, $groupId)
     {
         $baseQuery = Cabinet::query()
-            ->whereHas('learningOutcomes', function($q) use ($lesson) {
+            ->whereHas('learningOutcomes', function ($q) use ($lesson) {
                 $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
             });
 
-        // Учет размера группы
         $groupSize = Group::find($groupId)->size;
+
         $suitableCabinets = $baseQuery->where('capacity', '>=', $groupSize)->get();
 
-        // Если нет подходящих - возвращаем все возможные
         if ($suitableCabinets->isEmpty()) {
-            return Cabinet::whereHas('learningOutcomes', function($q) use ($lesson) {
+            return Cabinet::whereHas('learningOutcomes', function ($q) use ($lesson) {
                 $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
             })->get();
         }
@@ -227,7 +231,6 @@ class ScheduleController extends Controller
         $teacher = User::where('name', $teacherName)->first();
 
         if ($teacher && $preferred = $teacher->preferredCabinets->first()) {
-            // Проверка, есть ли предпочтительный кабинет среди подходящих
             return $cabinets->firstWhere('id', $preferred->id) ?? $cabinets->first();
         }
 
@@ -236,9 +239,9 @@ class ScheduleController extends Controller
 
     private function processLessonLines($groupId, $semester, $week)
     {
-        $learningOutcomes = LearningOutcome::whereHas('semesterDetails', function($q) use ($semester) {
+        $learningOutcomes = LearningOutcome::whereHas('semesterDetails', function ($q) use ($semester) {
             $q->where('semester_number', $semester)
-              ->where('hours_per_week', 1);
+                ->where('hours_per_week', 1);
         })->get();
 
         foreach ($learningOutcomes as $lo) {
@@ -248,16 +251,15 @@ class ScheduleController extends Controller
                 'target_week' => $week
             ]);
 
-            // Обновление статуса после успешной генерации
             $lessonLine->update([
                 'is_processed' => true,
                 'processed_at' => now()
             ]);
         }
     }
+
     private function logManualOverrideNeeded($lesson, $group)
     {
-        // Логика для уведомления диспетчера
         Log::warning("Группа {$group->name} не может быть назначена на РО {$lesson['discipline_name']} из-за несоответствия кабинета");
     }
 
@@ -265,7 +267,6 @@ class ScheduleController extends Controller
     {
         $conflicts = [];
 
-        // Проверка конфликтов преподавателей
         $teacherSchedules = Schedule::where('semester', $semester)
             ->where('week', $week)
             ->with('learningOutcome')
@@ -280,12 +281,11 @@ class ScheduleController extends Controller
             }
         }
 
-        // Проверка последовательности пар
         foreach ($schedule as $day => $pairs) {
             $pairNumbers = array_keys($pairs);
             sort($pairNumbers);
-
             $lastPair = 0;
+
             foreach ($pairNumbers as $pairNumber) {
                 if ($lastPair !== 0 && $pairNumber - $lastPair > 1) {
                     $conflicts[] = "Обнаружено окно между {$lastPair} и {$pairNumber} на {$day}";
@@ -304,7 +304,6 @@ class ScheduleController extends Controller
         foreach ($schedule as $day => $pairs) {
             $pairNumbers = array_keys($pairs);
             sort($pairNumbers);
-
             $lastPair = 0;
 
             foreach ($pairNumbers as $pairNumber) {
@@ -320,21 +319,23 @@ class ScheduleController extends Controller
 
     public function forceAssignCabinet(Request $request, $scheduleId)
     {
-        $request->validate([
+        $validator = Validator::make($request->all(), [
             'cabinet_id' => 'required|exists:cabinets,id',
             'force' => 'boolean'
         ]);
 
+        if ($validator->fails()) {
+            return back()->withErrors($validator);
+        }
+
         $schedule = Schedule::findOrFail($scheduleId);
         $cabinet = Cabinet::find($request->cabinet_id);
 
-        // Проверка вместимости с возможностью принудительного назначения
         if (!$cabinet->getAvailableCapacity($schedule->group_id) && !$request->force) {
             return back()->withErrors(['capacity' => 'Вместимость кабинета недостаточна для группы']);
         }
 
         $schedule->update(['cabinet_id' => $cabinet->id]);
-
         return back()->with('success', 'Кабинет успешно назначен');
     }
 }

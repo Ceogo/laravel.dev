@@ -11,6 +11,11 @@
         </div>
 
         <div class="mb-4">
+            <label for="name" class="block text-sm font-medium text-gray-700">Псевдоним</label>
+            <input type="text" name="name" id="name" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm">
+        </div>
+
+        <div class="mb-4">
             <label for="surname" class="block text-sm font-medium text-gray-700">Фамилия</label>
             <input type="text" name="surname" id="surname" class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm" required>
         </div>
@@ -45,6 +50,19 @@
                 <option value="">— Не выбрано —</option>
                 @foreach ($cabinets as $cabinet)
                     <option value="{{ $cabinet->id }}">{{ $cabinet->number }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="mb-4">
+            <label for="learning_outcome_ids" class="block text-sm font-medium text-gray-700">Результаты обучения</label>
+            <select
+                name="learning_outcome_ids[]"
+                id="learning_outcome_ids"
+                class="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                multiple
+            >
+                @foreach ($learningOutcomes as $lo)
+                    <option value="{{ $lo->id }}"><strong>{{ $lo->index }}</strong> {{ $lo->discipline_name }}</option>
                 @endforeach
             </select>
         </div>

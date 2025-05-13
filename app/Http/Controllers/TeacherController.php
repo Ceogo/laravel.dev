@@ -5,22 +5,30 @@ namespace App\Http\Controllers;
 use App\Models\User;
 use App\Models\Cabinet;
 use Illuminate\Http\Request;
+use App\Models\LearningOutcome;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
 
 class TeacherController extends Controller
 {
     public function index()
     {
-        $teachers = User::where('role', 'teacher')->with('preferredCabinets')->get();
+        $teachers = User::where('role', 'teacher')
+                    ->with(['preferredCabinets', 'learningOutcomes'])
+                    ->get();
         $cabinets = Cabinet::all();
-        return view('teachers.index', compact('teachers', 'cabinets'));
+        $learningOutcomes = LearningOutcome::all();
+
+        return view('teachers.index', compact('teachers', 'cabinets', 'learningOutcomes'));
     }
 
     public function create()
     {
         $cabinets = Cabinet::all();
-        return view('teachers.create', compact('cabinets'));
+        $learningOutcomes = LearningOutcome::all();
+        return view('teachers.create', compact('cabinets', 'learningOutcomes'));
     }
 
     public function store(Request $request)
@@ -35,6 +43,8 @@ class TeacherController extends Controller
             'password' => 'required|string|min:8',
             'status' => 'required|in:active,inactive',
             'preferred_cabinet_id' => 'nullable|exists:cabinets,id',
+            'learning_outcome_ids' => 'nullable|array',
+            'learning_outcome_ids.*' => 'exists:learning_outcomes,id',
         ]);
 
         if ($validator->fails()) {
@@ -56,6 +66,9 @@ class TeacherController extends Controller
         if ($request->has('preferred_cabinet_id')) {
             $teacher->preferredCabinets()->attach($request->preferred_cabinet_id);
         }
+        if ($request->has('learning_outcome_ids')) {
+            $teacher->learningOutcomes()->attach($request->learning_outcome_ids);
+        }
 
         return redirect()->route('teachers.index')->with('success', 'Преподаватель успешно добавлен.');
     }
@@ -64,7 +77,10 @@ class TeacherController extends Controller
     {
         $cabinets = Cabinet::all();
         $selectedCabinet = $teacher->preferredCabinets->first()?->id ?? null;
-        return view('teachers.edit', compact('teacher', 'cabinets', 'selectedCabinet'));
+        $learningOutcomes = LearningOutcome::all();
+        $selectedLearningOutcomes = $teacher->learningOutcomes->pluck('id')->toArray();
+
+        return view('teachers.edit', compact('teacher', 'cabinets', 'selectedCabinet', 'learningOutcomes', 'selectedLearningOutcomes'));
     }
 
     public function update(Request $request, User $teacher)
@@ -79,6 +95,8 @@ class TeacherController extends Controller
             'password' => 'nullable|string|min:8',
             'status' => 'required|in:active,inactive',
             'preferred_cabinet_id' => 'nullable|exists:cabinets,id',
+            'learning_outcome_ids' => 'nullable|array',
+            'learning_outcome_ids.*' => 'exists:learning_outcomes,id',
         ]);
 
         if ($validator->fails()) {
@@ -97,6 +115,7 @@ class TeacherController extends Controller
         ]);
 
         $teacher->preferredCabinets()->sync($request->preferred_cabinet_id ?? []);
+         $teacher->learningOutcomes()->sync($request->learning_outcome_ids ?? []);
 
         return redirect()->route('teachers.index')->with('success', 'Преподаватель успешно обновлён.');
     }
@@ -109,5 +128,37 @@ class TeacherController extends Controller
 
         $teacher->delete();
         return redirect()->route('teachers.index')->with('success', 'Преподаватель успешно удалён.');
+    }
+
+    public function exportTeachers()
+    {
+        $teachers = User::where('role', 'teacher')->get();
+
+        $spreadsheet = new Spreadsheet();
+        $sheet = $spreadsheet->getActiveSheet();
+
+        // Заголовки
+        $sheet->setCellValue('A1', 'Имя');
+        $sheet->setCellValue('B1', 'Email');
+        $sheet->setCellValue('C1', 'Статус');
+        $sheet->setCellValue('D1', 'Предпочтительный кабинет');
+
+        // Данные
+        $row = 2;
+        foreach ($teachers as $teacher) {
+            $sheet->setCellValue('A' . $row, $teacher->display_name);
+            $sheet->setCellValue('B' . $row, $teacher->email);
+            $sheet->setCellValue('C' . $row, $teacher->status);
+            $sheet->setCellValue('D' . $row, $teacher->preferredCabinets->first()?->number ?? '—');
+            $row++;
+        }
+
+        // Сохранение файла
+        $writer = new Xlsx($spreadsheet);
+        $fileName = 'teachers.xlsx';
+        $tempPath = sys_get_temp_dir() . '/' . $fileName;
+        $writer->save($tempPath);
+
+        return response()->download($tempPath, $fileName)->deleteFileAfterSend(true);
     }
 }

@@ -5,6 +5,7 @@
     <div class="flex justify-between items-center mb-4">
         <h2 class="text-xl font-semibold text-gray-900">Преподаватели</h2>
         <a href="{{ route('teachers.create') }}" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Добавить преподавателя</a>
+        <a href="{{ route('teachers.export.excel') }}" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Экспорт Excel</a>
     </div>
     <div class="overflow-x-auto">
         <table class="min-w-full divide-y divide-gray-200">
@@ -12,6 +13,7 @@
                 <tr>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Имя</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Статус</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Предпочтительный кабинет</th>
                     <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Действия</th>
                 </tr>

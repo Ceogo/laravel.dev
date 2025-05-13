@@ -8,6 +8,14 @@
             background-color: #fee2e2;
             color: #991b1b;
         }
+        #submit {
+            background-color: var(--primary);
+            transition: background-color 0.3s, transform 0.3s;
+        }
+        #submit:hover {
+            background-color: var(--accent);
+            transform: translateY(-2px);
+        }
     </style>
 @endsection
 
@@ -17,10 +25,10 @@
         <form action="{{ route('upload') }}" method="POST" enctype="multipart/form-data">
             @csrf
             <div class="mb-4">
-                <input type="file" name="file" class="block w-full p-2 border rounded focus:ring-2 focus:ring-blue-500" required>
+                <input type="file" name="file" class="block w-full p-2 border rounded focus:ring-2" required>
             </div>
             <div class="text-center">
-                <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition">Отправить</button>
+                <button type="submit" class="text-white px-6 py-3 rounded-lg transition" id="submit">Отправить</button>
             </div>
         </form>
         @if ($errors->any())

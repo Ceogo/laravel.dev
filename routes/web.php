@@ -17,5 +17,8 @@ Route::get('/schedule', [ScheduleController::class, 'show'])->name('schedule');
 Route::get('/schedule/edit/{scheduleId}', [ScheduleController::class, 'editSchedule'])->name('schedule.edit');
 Route::post('/schedule/edit/{scheduleId}', [ScheduleController::class, 'editSchedule']);
 Route::post('/schedule/swap', [ScheduleController::class, 'swapSchedules'])->name('schedule.swap');
-Route::resource('teachers', TeacherController::class);
+Route::resource('teachers', TeacherController::class)->only([
+    'index', 'create', 'store', 'edit', 'update', 'destroy'
+]);
 Route::resource('cabinets', CabinetController::class);
+Route::get('/teachers/export-excel', [TeacherController::class, 'exportTeachers'])->name('teachers.export.excel');
