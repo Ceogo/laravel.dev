@@ -7,6 +7,7 @@ use App\Models\Group;
 use App\Models\Cabinet;
 use App\Models\Schedule;
 use App\Models\LessonLine;
+use App\ScheduleGenerator;
 use Illuminate\Http\Request;
 use App\Models\SemesterDetail;
 use App\Models\LearningOutcome;
@@ -29,11 +30,21 @@ class ScheduleController extends Controller
         $group = Group::findOrFail($groupId);
         $bellSchedule = $this->getBellSchedule();
 
-        $schedule = Schedule::with(['learningOutcome.module', 'cabinet'])
+        // Получение расписания
+        $scheduleQuery = Schedule::with(['learningOutcome.module', 'cabinet'])
             ->where('group_id', $groupId)
             ->where('semester', $semester)
-            ->where('week', $week)
-            ->get()
+            ->where('week', $week);
+
+        // Для отладки: проверьте SQL-запрос и результат
+        // dd($scheduleQuery->toSql(), $scheduleQuery->getBindings());
+
+        $scheduleCollection = $scheduleQuery->get();
+
+        // Для отладки: проверьте сырой результат из БД
+        // dd($scheduleCollection);
+
+        $schedule = $scheduleCollection
             ->groupBy('day')
             ->map(function ($daySchedules) {
                 return $daySchedules->mapWithKeys(function ($item) {
@@ -45,8 +56,12 @@ class ScheduleController extends Controller
                         'cabinet_number' => optional($item->cabinet)->number,
                         'id' => $item->id,
                     ]];
-                })->all();
-            })->toArray();
+                })->all(); // <-- добавлен .all() для преобразования в массив
+            })
+            ->toArray(); // <-- добавлен .toArray() для преобразования всей коллекции в массив
+
+        // Для отладки: проверьте окончательный массив расписания
+        // dd($schedule);
 
         if (empty($schedule)) {
             $schedule = $this->generateSchedule($group, $semester, $week, $bellSchedule);
