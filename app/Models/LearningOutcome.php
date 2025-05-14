@@ -44,4 +44,11 @@ class LearningOutcome extends Model
     {
         return $this->belongsToMany(User::class, 'learning_outcome_teacher');
     }
+    public function getDuplicates()
+    {
+        return LearningOutcome::where('index', $this->index)
+            ->where('id', '<>', $this->id)
+            ->where('discipline_name', '<>', $this->discipline_name)
+            ->get();
+    }
 }

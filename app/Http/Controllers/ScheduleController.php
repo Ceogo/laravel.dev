@@ -30,58 +30,48 @@ class ScheduleController extends Controller
         $group = Group::findOrFail($groupId);
         $bellSchedule = $this->getBellSchedule();
 
-        // Получение расписания
-        $scheduleQuery = Schedule::with(['learningOutcome.module', 'cabinet'])
-            ->where('group_id', $groupId)
-            ->where('semester', $semester)
-            ->where('week', $week);
-
-        // Для отладки: проверьте SQL-запрос и результат
-        // dd($scheduleQuery->toSql(), $scheduleQuery->getBindings());
-
-        $scheduleCollection = $scheduleQuery->get();
-
-        // Для отладки: проверьте сырой результат из БД
-        // dd($scheduleCollection);
-
-        $schedule = $scheduleCollection
-            ->groupBy('day')
-            ->map(function ($daySchedules) {
-                return $daySchedules->mapWithKeys(function ($item) {
+        // Получение существующего расписания
+        $schedule = Schedule::with(['learningOutcome.module', 'cabinet']) // Загружаем связанные модели
+            ->where('group_id', $groupId) // Фильтруем по группе
+            ->where('semester', $semester) // По семестру
+            ->where('week', $week) // По неделе
+            ->get() // Получаем коллекцию
+            ->groupBy('day') // Группируем по дням недели
+            ->map(function ($daySchedules) { // Трансформируем каждую группу
+                return $daySchedules->mapWithKeys(function ($item) { // Преобразуем пары в ассоциативный массив
                     return [$item->pair_number => [
                         'module_index' => optional(optional($item->learningOutcome)->module)->index ?? 'Не указан модуль',
                         'discipline_name' => optional($item->learningOutcome)->discipline_name ?? 'Не указана дисциплина',
-                        'teacher_name' => optional(optional($item->learningOutcome)->teacher_name) ?? 'вакансия',
+                        'teacher_name' => $item->learningOutcome->teacher_name ?? 'вакансия',
                         'type' => $item->type,
                         'cabinet_number' => optional($item->cabinet)->number,
                         'id' => $item->id,
                     ]];
-                })->all(); // <-- добавлен .all() для преобразования в массив
+                })->all(); // Преобразуем коллекцию в массив
             })
-            ->toArray(); // <-- добавлен .toArray() для преобразования всей коллекции в массив
+            ->toArray(); // Преобразуем всю коллекцию в массив
 
-        // Для отладки: проверьте окончательный массив расписания
-        // dd($schedule);
-
+        // Генерация нового расписания через ScheduleGenerator
         if (empty($schedule)) {
-            $schedule = $this->generateSchedule($group, $semester, $week, $bellSchedule);
+            $generator = new ScheduleGenerator();
+            $schedule = $generator->generateForWeek($group, $semester, $week);
         }
 
         $groups = Group::all();
         return view('schedule.index', compact('schedule', 'group', 'groups', 'semester', 'week', 'bellSchedule'));
     }
 
-    private function prepareDayLessons($lessons)
-    {
-        shuffle($lessons);
-        $result = [];
-        $pairNumber = 1;
-        foreach ($lessons as $lesson) {
-            $result[$pairNumber++] = $lesson;
-            if ($pairNumber > 4) break;
-        }
-        return $result;
-    }
+    // private function prepareDayLessons($lessons)
+    // {
+    //     shuffle($lessons);
+    //     $result = [];
+    //     $pairNumber = 1;
+    //     foreach ($lessons as $lesson) {
+    //         $result[$pairNumber++] = $lesson;
+    //         if ($pairNumber > 4) break;
+    //     }
+    //     return $result;
+    // }
 
     private function getBellSchedule()
     {
@@ -108,170 +98,174 @@ class ScheduleController extends Controller
         ];
     }
 
-    private function generateSchedule($group, $semester, $week, $bellSchedule)
-    {
-        $schedule = [
-            'monday' => [], 'tuesday' => [], 'wednesday' => [],
-            'thursday' => [], 'friday' => []
-        ];
+    // private function generateSchedule($group, $semester, $week, $bellSchedule)
+    // {
+    //     $schedule = [
+    //         'monday' => [], 'tuesday' => [], 'wednesday' => [],
+    //         'thursday' => [], 'friday' => []
+    //     ];
 
-        $lessons = $this->getLessons($group, $semester);
-        $days = array_keys($schedule);
+    //     $lessons = $this->getLessons($group, $semester);
+    //     $days = array_keys($schedule);
 
-        foreach ($days as $day) {
-            $dayLessons = $this->prepareDayLessons($lessons);
+    //     foreach ($days as $day) {
+    //         $dayLessons = $this->prepareDayLessons($lessons);
 
-            foreach ($dayLessons as $pairNumber => $lesson) {
-                // Проверка доступности преподавателя
-                if (!$this->isTeacherAvailable($lesson['teacher_name'], $day, $pairNumber, $week, $semester)) {
-                    continue;
-                }
+    //         foreach ($dayLessons as $pairNumber => $lesson) {
+    //             // Проверка доступности преподавателя
+    //             if (!$this->isTeacherAvailable($lesson['teacher_name'], $day, $pairNumber, $week, $semester)) {
+    //                 continue;
+    //             }
 
-                // Получение подходящих кабинетов
-                $suitableCabinets = $this->findSuitableCabinets($lesson, $group->id);
+    //             // Получение подходящих кабинетов
+    //             $suitableCabinets = $this->findSuitableCabinets($lesson, $group->id);
 
-                if ($suitableCabinets->isEmpty()) {
-                    $this->logManualOverrideNeeded($lesson, $group);
-                    continue;
-                }
+    //             if ($suitableCabinets->isEmpty()) {
+    //                 $this->logManualOverrideNeeded($lesson, $group);
+    //                 continue;
+    //             }
 
-                // Выбор оптимального кабинета
-                $selectedCabinet = $this->selectOptimalCabinet(
-                    $suitableCabinets,
-                    $lesson['teacher_name']
-                );
+    //             // Выбор оптимального кабинета
+    //             $selectedCabinet = $this->selectOptimalCabinet(
+    //                 $suitableCabinets,
+    //                 $lesson['teacher_name']
+    //             );
 
-                // Создание записи расписания
-                $scheduleItem = Schedule::create([
-                    'group_id' => $group->id,
-                    'learning_outcome_id' => $lesson['learning_outcome_id'],
-                    'day' => $day,
-                    'pair_number' => $pairNumber,
-                    'type' => $lesson['type'],
-                    'week' => $week,
-                    'semester' => $semester,
-                    'cabinet_id' => $selectedCabinet->id
-                ]);
+    //             // Создание записи расписания
+    //             $scheduleItem = Schedule::create([
+    //                 'group_id' => $group->id,
+    //                 'learning_outcome_id' => $lesson['learning_outcome_id'],
+    //                 'day' => $day,
+    //                 'pair_number' => $pairNumber,
+    //                 'type' => $lesson['type'],
+    //                 'week' => $week,
+    //                 'semester' => $semester,
+    //                 'cabinet_id' => $selectedCabinet->id
+    //             ]);
 
-                // Обновление данных расписания
-                $schedule[$day][$pairNumber] = [
-                    'module_index' => optional(optional($scheduleItem->learningOutcome)->module)->index ?? 'Не указан модуль',
-                    'discipline_name' => optional($scheduleItem->learningOutcome)->discipline_name ?? 'Не указана дисциплина',
-                    'teacher_name' => optional(optional($scheduleItem->learningOutcome)->teacher_name) ?? 'вакансия',
-                    'type' => $scheduleItem->type,
-                    'cabinet_number' => optional($scheduleItem->cabinet)->number,
-                    'id' => $scheduleItem->id,
-                ];
-            }
-        }
+    //             // Обновление данных расписания
+    //             $schedule[$day][$pairNumber] = [
+    //                 'module_index' => optional(optional($scheduleItem->learningOutcome)->module)->index ?? 'Не указан модуль',
+    //                 'discipline_name' => optional($scheduleItem->learningOutcome)->discipline_name ?? 'Не указана дисциплина',
+    //                 'teacher_name' => optional(optional($scheduleItem->learningOutcome)->teacher_name) ?? 'вакансия',
+    //                 'type' => $scheduleItem->type,
+    //                 'cabinet_number' => optional($scheduleItem->cabinet)->number,
+    //                 'id' => $scheduleItem->id,
+    //             ];
+    //         }
+    //     }
 
-        $this->processLessonLines($group->id, $semester, $week);
-        return $schedule;
-    }
+    //     $this->processLessonLines($group->id, $semester, $week);
+    //     return $schedule;
+    // }
 
-    private function getLessons($group, $semester)
-    {
-        $lessons = [];
+    // private function getLessons($group, $semester)
+    // {
+    //     $lessons = [];
 
-        foreach ($group->modules as $module) {
-            foreach ($module->learningOutcomes as $lo) {
-                $semesterDetail = $lo->semesterDetails()
-                    ->where('semester_number', $semester)
-                    ->first();
+    //     foreach ($group->modules as $module) {
+    //         foreach ($module->learningOutcomes as $lo) {
+    //             $semesterDetail = $lo->semesterDetails()
+    //                 ->where('semester_number', $semester)
+    //                 ->first();
 
-                if ($semesterDetail && $semesterDetail->total_hours > 0) {
-                    // Исправленная обработка JSON-поля
-                    $exams = json_decode($semesterDetail->exams, true);
-                    $exams = is_array($exams) ? $exams : [];
+    //             if ($semesterDetail && $semesterDetail->total_hours > 0) {
+    //                 // Исправленная обработка JSON-поля
+    //                 $exams = is_string($semesterDetail->exams)
+    //                 ? json_decode($semesterDetail->exams, true)
+    //                 : [];
 
-                    $lessons[] = [
-                        'learning_outcome_id' => $lo->id,
-                        'module_index' => $module->index,
-                        'discipline_name' => $lo->discipline_name,
-                        'teacher_name' => $lo->teacher_name ?? 'вакансия',
-                        'type' => 'theoretical',
-                        'hours_per_week' => $semesterDetail->hours_per_week,
-                        'exams' => $exams,
-                    ];
-                }
-            }
-        }
+    //                 $lessons[] = [
+    //                     'learning_outcome_id' => $lo->id,
+    //                     'module_index' => $module->index,
+    //                     'discipline_name' => $lo->discipline_name,
+    //                     'teacher_name' => $lo->teacher_name ?? 'вакансия',
+    //                     'type' => 'theoretical',
+    //                     'hours_per_week' => $semesterDetail->hours_per_week,
+    //                     'exams' => $exams,
+    //                 ];
+    //             }
+    //         }
+    //     }
 
-        return $lessons;
-    }
+    //     return $lessons;
+    // }
 
-    private function isTeacherAvailable($teacherName, $day, $pairNumber, $week, $semester)
-    {
-        // Обработка случая null или "вакансия"
-        if (!$teacherName || $teacherName === 'вакансия') {
-            return true;
-        }
+    // private function isTeacherAvailable($teacherName, $day, $pairNumber, $week, $semester)
+    // {
+    //     // Обработка случая null или "вакансия"
+    //     if (!$teacherName || $teacherName === 'вакансия') {
+    //         return true;
+    //     }
 
-        return !Schedule::where('week', $week)
-            ->where('semester', $semester)
-            ->where('day', $day)
-            ->where('pair_number', $pairNumber)
-            ->whereHas('learningOutcome', function ($query) use ($teacherName) {
-                if (is_array($teacherName)) {
-                    $query->whereIn('teacher_name', $teacherName);
-                } else {
-                    $query->where('teacher_name', $teacherName);
-                }
-            })
-            ->exists();
-    }
+    //     return !Schedule::where('week', $week)
+    //         ->where('semester', $semester)
+    //         ->where('day', $day)
+    //         ->where('pair_number', $pairNumber)
+    //         ->whereHas('learningOutcome', function ($query) use ($teacherName) {
+    //             if (is_array($teacherName)) {
+    //                 $query->whereIn('teacher_name', $teacherName);
+    //             } else {
+    //                 $query->where('teacher_name', $teacherName);
+    //             }
+    //         })
+    //         ->exists();
+    // }
 
-    private function findSuitableCabinets($lesson, $groupId)
-    {
-        $baseQuery = Cabinet::query()
-            ->whereHas('learningOutcomes', function ($q) use ($lesson) {
-                $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
-            });
+    // private function findSuitableCabinets($lesson, $groupId)
+    // {
+    //     $baseQuery = Cabinet::query()
+    //         ->whereHas('learningOutcomes', function ($q) use ($lesson) {
+    //             $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
+    //         });
 
-        $groupSize = Group::find($groupId)->size;
+    //     // Используем существующее поле `students_count`
+    //     $group = Group::find($groupId);
+    //     $groupSize = $group ? $group->students_count : 0;
 
-        $suitableCabinets = $baseQuery->where('capacity', '>=', $groupSize)->get();
+    //     $suitableCabinets = $baseQuery->where('capacity', '>=', $groupSize)->get();
 
-        if ($suitableCabinets->isEmpty()) {
-            return Cabinet::whereHas('learningOutcomes', function ($q) use ($lesson) {
-                $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
-            })->get();
-        }
+    //     if ($suitableCabinets->isEmpty()) {
+    //         return Cabinet::whereHas('learningOutcomes', function ($q) use ($lesson) {
+    //             $q->where('learning_outcome_id', $lesson['learning_outcome_id']);
+    //         })->get();
+    //     }
+    //     return $suitableCabinets;
+    // }
 
-        return $suitableCabinets;
-    }
+    // private function selectOptimalCabinet($cabinets, $teacherName)
+    // {
+    //     $teacher = User::where('name', $teacherName)->first();
 
-    private function selectOptimalCabinet($cabinets, $teacherName)
-    {
-        $teacher = User::where('name', $teacherName)->first();
+    //     if ($teacher && $preferred = $teacher->preferredCabinets->first()) {
+    //         return $cabinets->firstWhere('id', $preferred->id) ?? $cabinets->first();
+    //     }
 
-        if ($teacher && $preferred = $teacher->preferredCabinets->first()) {
-            return $cabinets->firstWhere('id', $preferred->id) ?? $cabinets->first();
-        }
+    //     return $cabinets->first();
+    // }
 
-        return $cabinets->first();
-    }
+    // private function processLessonLines($groupId, $semester, $week)
+    // {
+    //     $learningOutcomes = LearningOutcome::whereHas('semesterDetails', function ($q) use ($semester) {
+    //         $q->where('semester_number', $semester)
+    //         ->where('hours_per_week', 1);
+    //     })->get();
 
-    private function processLessonLines($groupId, $semester, $week)
-    {
-        $learningOutcomes = LearningOutcome::whereHas('semesterDetails', function ($q) use ($semester) {
-            $q->where('semester_number', $semester)
-                ->where('hours_per_week', 1);
-        })->get();
-
-        foreach ($learningOutcomes as $lo) {
-            $lessonLine = LessonLine::firstOrCreate([
-                'learning_outcome_id' => $lo->id,
-                'group_id' => $groupId,
-                'target_week' => $week
-            ]);
-
-            $lessonLine->update([
-                'is_processed' => true,
-                'processed_at' => now()
-            ]);
-        }
-    }
+    //     foreach ($learningOutcomes as $lo) {
+    //         // Обновляем существующую запись или создаем новую
+    //         LessonLine::updateOrCreate(
+    //             [
+    //                 'learning_outcome_id' => $lo->id,
+    //                 'group_id' => $groupId,
+    //                 'target_week' => $week
+    //             ],
+    //             [
+    //                 'is_processed' => true,
+    //                 'processed_at' => now()
+    //             ]
+    //         );
+    //     }
+    // }
 
     private function logManualOverrideNeeded($lesson, $group)
     {

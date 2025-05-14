@@ -16,4 +16,10 @@ class Module extends Model
     {
         return $this->hasMany(LearningOutcome::class);
     }
+    public function getDuplicates()
+    {
+        return Module::where('index', $this->index)
+            ->where('id', '<>', $this->id)
+            ->get();
+    }
 }

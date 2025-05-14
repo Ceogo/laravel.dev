@@ -12,4 +12,8 @@ class LessonLine extends Model
         'target_week',
         'is_processed',
     ];
+    public function learningOutcome()
+    {
+        return $this->belongsTo(LearningOutcome::class);
+    }
 }

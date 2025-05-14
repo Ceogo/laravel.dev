@@ -18,9 +18,6 @@ return new class extends Migration
             $table->integer('target_week')->nullable();
             $table->boolean('is_processed')->default(false);
             $table->timestamps();
-
-            // Уникальный индекс для group_id + target_week
-            $table->unique(['group_id', 'target_week']);
         });
     }
 
