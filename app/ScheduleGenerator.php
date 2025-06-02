@@ -12,7 +12,7 @@ use Illuminate\Support\Facades\Log;
 
 class ScheduleGenerator
 {
-    private array $dailyDistribution = [3, 3, 4, 4, 4]; // Распределение пар по дням
+    private array $dailyDistribution = [3, 3, 4, 4, 4];
     private array $weekDays = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday'];
 
     public function generateForAllGroups(int $semester, int $week): array
@@ -179,7 +179,6 @@ class ScheduleGenerator
     {
         $lessons = [];
 
-        // Логирование начала сбора пар
         Log::info("Начинаем сбор пар для группы {$group->id}, семестр $semester, неделя $week");
 
         // Регулярные пары из semester_details

@@ -14,6 +14,7 @@ class Schedule extends Model
         'type',
         'week',
         'semester',
+        'cabinet_id'
     ];
     public function learningOutcome()
     {

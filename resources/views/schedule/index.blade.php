@@ -177,6 +177,7 @@
                                             <small class="text-gray-500">
                                                 {{ $schedule[$day][$pair]['type'] == 'theoretical' ? 'Теория' : ($schedule[$day][$pair]['type'] == 'lab_practical' ? 'ЛПР' : 'КР/КП') }}
                                             </small><br>
+                                            <small class="text-gray-500">Кабинет: {{ $schedule[$day][$pair]['cabinet_number'] ?? 'Не указан' }}</small><br>
                                             <a href="{{ route('schedule.edit', $schedule[$day][$pair]['id']) }}" class="text-primary hover:underline text-sm">Редактировать</a>
                                         @endif
                                     </td>

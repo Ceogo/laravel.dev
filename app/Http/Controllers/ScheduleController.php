@@ -30,15 +30,14 @@ class ScheduleController extends Controller
         $group = Group::findOrFail($groupId);
         $bellSchedule = $this->getBellSchedule();
 
-        // Получение существующего расписания
         $schedule = Schedule::with(['learningOutcome.module', 'cabinet']) // Загружаем связанные модели
-            ->where('group_id', $groupId) // Фильтруем по группе
-            ->where('semester', $semester) // По семестру
-            ->where('week', $week) // По неделе
-            ->get() // Получаем коллекцию
-            ->groupBy('day') // Группируем по дням недели
-            ->map(function ($daySchedules) { // Трансформируем каждую группу
-                return $daySchedules->mapWithKeys(function ($item) { // Преобразуем пары в ассоциативный массив
+            ->where('group_id', $groupId)
+            ->where('semester', $semester)
+            ->where('week', $week)
+            ->get()
+            ->groupBy('day')
+            ->map(function ($daySchedules) {
+                return $daySchedules->mapWithKeys(function ($item) {
                     return [$item->pair_number => [
                         'module_index' => optional(optional($item->learningOutcome)->module)->index ?? 'Не указан модуль',
                         'discipline_name' => optional($item->learningOutcome)->discipline_name ?? 'Не указана дисциплина',
@@ -47,11 +46,10 @@ class ScheduleController extends Controller
                         'cabinet_number' => optional($item->cabinet)->number,
                         'id' => $item->id,
                     ]];
-                })->all(); // Преобразуем коллекцию в массив
+                })->all();
             })
-            ->toArray(); // Преобразуем всю коллекцию в массив
+            ->toArray();
 
-        // Генерация нового расписания через ScheduleGenerator
         if (empty($schedule)) {
             $generator = new ScheduleGenerator();
             $schedule = $generator->generateForWeek($group, $semester, $week);
